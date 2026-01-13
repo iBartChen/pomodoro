@@ -9,11 +9,11 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="My Pomodoro">
     
-    <!-- 確保 icon.png 存在於根目錄 -->
-    <link rel="apple-touch-icon" href="./icon.png">
+    <!-- 使用絕對路徑確保在根網域下正確加載 -->
+    <link rel="apple-touch-icon" href="/icon.png">
     
     <meta name="theme-color" content="#020202">
-    <link rel="manifest" href="./manifest.json">
+    <link rel="manifest" href="/manifest.json">
     
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -60,12 +60,12 @@
   <body>
     <div id="root"></div>
     <div class="scanlines"></div>
-    <script type="module" src="./index.tsx"></script>
+    <script type="module" src="/index.tsx"></script>
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          // 在 GitHub Pages 環境下，使用相對路徑註冊 SW 且不強制設定 scope 通常最為穩健
-          navigator.serviceWorker.register('./sw.js').then(reg => {
+          // 使用根目錄路徑註冊，確保 Scope 覆蓋整個自定義網域
+          navigator.serviceWorker.register('/sw.js').then(reg => {
             console.log('SW registered on:', reg.scope);
           }).catch(err => {
             console.log('SW failed', err);
