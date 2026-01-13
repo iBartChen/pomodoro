@@ -1,0 +1,16 @@
+{
+  "name": "Neon Pulse Pomodoro",
+  "short_name": "NeonTimer",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#020202",
+  "theme_color": "#020202",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3563/3563412.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
