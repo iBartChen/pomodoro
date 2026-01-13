@@ -1,7 +1,7 @@
 {
   "name": "My Pomodoro",
   "short_name": "My Pomodoro",
-  "start_url": "./index.html",
+  "start_url": "/pomodoro/",
   "display": "standalone",
   "background_color": "#020202",
   "theme_color": "#020202",
