@@ -1,8 +1,8 @@
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  // 這裡必須對應 https://ibartchen.github.io/pomodoro/ 中的 /pomodoro/
-  base: '/pomodoro/',
+  // 由於已綁定自定義網域 pomodoro.bartchen.com，路徑應改為根目錄 '/'
+  base: '/',
   build: {
     outDir: 'dist',
     assetsDir: 'assets',
