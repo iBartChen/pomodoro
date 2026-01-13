@@ -8,17 +8,38 @@ const App: React.FC = () => {
   const [isActive, setIsActive] = useState(false);
   const [mode, setMode] = useState<TimerMode>(TimerMode.FOCUS);
   const [surgeActive, setSurgeActive] = useState(false);
+  const [targetTimestamp, setTargetTimestamp] = useState<number | null>(null);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
     typeof Notification !== 'undefined' ? Notification.permission : 'default'
   );
   
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wakeLockRef = useRef<any>(null);
+  
   const theme = mode === TimerMode.FOCUS ? COLORS.FOCUS : COLORS.BREAK;
   const totalTime = mode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME;
 
   const progress = useMemo(() => {
     return ((totalTime - timeLeft) / totalTime) * 100;
   }, [timeLeft, totalTime]);
+
+  const requestWakeLock = async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+      } catch (err) {
+        console.debug('WakeLock failed (likely iOS or non-HTTPS)');
+      }
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().then(() => {
+        wakeLockRef.current = null;
+      });
+    }
+  };
 
   const requestPermission = async () => {
     if ('Notification' in window) {
@@ -47,39 +68,85 @@ const App: React.FC = () => {
     const nextMode = mode === TimerMode.FOCUS ? TimerMode.BREAK : TimerMode.FOCUS;
     setSurgeActive(true);
     sendNotification(nextMode);
+    setTargetTimestamp(null);
+    setIsActive(false);
     
     setTimeout(() => {
       setMode(nextMode);
       setSurgeActive(false);
+      setTimeLeft(nextMode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME);
     }, 1500);
   }, [mode, sendNotification]);
 
+  const syncTime = useCallback(() => {
+    if (!isActive || !targetTimestamp) return;
+    
+    const now = Date.now();
+    const remaining = Math.max(0, Math.round((targetTimestamp - now) / 1000));
+    
+    setTimeLeft(remaining);
+    
+    if (remaining === 0) {
+      setIsActive(false);
+      releaseWakeLock();
+      if (!surgeActive) triggerModeSwitch();
+    }
+  }, [isActive, targetTimestamp, triggerModeSwitch, surgeActive]);
+
   const toggleTimer = useCallback(() => {
-    setIsActive(!isActive);
-  }, [isActive]);
+    if (!isActive) {
+      setTargetTimestamp(Date.now() + timeLeft * 1000);
+      requestWakeLock();
+      setIsActive(true);
+    } else {
+      setTargetTimestamp(null);
+      releaseWakeLock();
+      setIsActive(false);
+    }
+  }, [isActive, timeLeft]);
 
   const resetTimer = useCallback(() => {
     setIsActive(false);
+    setTargetTimestamp(null);
     setTimeLeft(mode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME);
+    releaseWakeLock();
   }, [mode]);
 
+  // Interval sync
   useEffect(() => {
-    if (isActive && timeLeft > 0) {
-      timerRef.current = setInterval(() => {
-        setTimeLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      setIsActive(false);
-      if (!surgeActive) triggerModeSwitch();
+    if (isActive) {
+      timerRef.current = setInterval(syncTime, 1000);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [isActive, timeLeft, triggerModeSwitch, surgeActive]);
+  }, [isActive, syncTime]);
+
+  // Mobile/iOS Wake-up sync (The most critical part for iOS)
+  useEffect(() => {
+    const handleSync = () => {
+      if (document.visibilityState === 'visible') {
+        syncTime();
+        if (isActive) requestWakeLock();
+      }
+    };
+
+    window.addEventListener('visibilitychange', handleSync);
+    window.addEventListener('focus', handleSync);
+    window.addEventListener('pageshow', handleSync); // Important for iOS BF Cache
+
+    return () => {
+      window.removeEventListener('visibilitychange', handleSync);
+      window.removeEventListener('focus', handleSync);
+      window.removeEventListener('pageshow', handleSync);
+    };
+  }, [syncTime, isActive]);
 
   useEffect(() => {
-    setTimeLeft(mode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME);
-  }, [mode]);
+    if (!isActive && !surgeActive) {
+      setTimeLeft(mode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME);
+    }
+  }, [mode, isActive, surgeActive]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -98,13 +165,12 @@ const App: React.FC = () => {
       </div>
 
       <div className="relative z-20 flex flex-col items-center w-full max-w-md">
-        {/* Notification Status */}
         {notifPermission !== 'granted' && (
           <button 
             onClick={requestPermission}
             className="mb-4 text-[10px] font-['JetBrains_Mono'] border border-white/20 px-3 py-1 rounded-full text-white/50 hover:text-white hover:border-white/50 transition-all uppercase tracking-widest"
           >
-            [ ! ] ENABLE REST REMINDERS
+            [ ! ] ENABLE BACKGROUND ALERTS
           </button>
         )}
 
@@ -142,8 +208,8 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        {/* 這裡修正按鈕置中 */}
-        <div className="mt-12 flex flex-col sm:flex-row gap-6 w-full px-12 justify-center items-center">
+        {/* 這裡確保按鈕容器與內容置中 */}
+        <div className="mt-12 flex flex-row gap-6 w-full justify-center items-center">
           <NeonButton label={isActive ? "PAUSE" : "START"} onClick={toggleTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
           <NeonButton label="RESET" onClick={resetTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
         </div>
