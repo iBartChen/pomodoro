@@ -4,6 +4,11 @@ on:
   push:
     branches: ["main"]
 
+# 防止重複部署衝突：同一時間只有一個任務在部署，新的 push 會取消舊的待執行任務
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pages: write
@@ -19,7 +24,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          # 移除 cache: 'npm' 以免因為缺少 package-lock.json 報錯
       - name: Install dependencies
         run: npm install
       - name: Build
