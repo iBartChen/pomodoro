@@ -1,3 +1,4 @@
+// 增加版本號以強制更新快取: v2
 self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
@@ -6,9 +7,8 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// iOS PWA 要求必須有 fetch 處理程序才能正確識別應用程式狀態
 self.addEventListener('fetch', (event) => {
-  // 這裡我們直接傳遞請求，不做額外緩存處理，保持應用程式最新
+  // 保持網絡優先，確保 PWA 內容是最新的
   event.respondWith(fetch(event.request));
 });
 
