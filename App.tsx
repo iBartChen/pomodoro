@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { TimerMode } from './types';
 import { FOCUS_TIME, BREAK_TIME, COLORS } from './constants';
@@ -31,7 +30,6 @@ const App: React.FC = () => {
   const sendNotification = useCallback((nextMode: TimerMode) => {
     if (notifPermission === 'granted' && 'serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then((registration) => {
-        // Fix: Use type assertion as 'any' to bypass missing 'vibrate' property in standard NotificationOptions types
         registration.showNotification(
           nextMode === TimerMode.BREAK ? 'NEON_SURGE: FOCUS_COMPLETE' : 'NEON_SURGE: BREAK_OVER',
           {
@@ -144,7 +142,8 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-12 flex flex-col sm:flex-row gap-6 w-full px-12">
+        {/* 這裡修正按鈕置中 */}
+        <div className="mt-12 flex flex-col sm:flex-row gap-6 w-full px-12 justify-center items-center">
           <NeonButton label={isActive ? "PAUSE" : "START"} onClick={toggleTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
           <NeonButton label="RESET" onClick={resetTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
         </div>
