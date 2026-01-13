@@ -50,7 +50,7 @@ const App: React.FC = () => {
     playBeep(1100, now + 1.2, 0.8);
   }, []);
 
-  // iOS Background Audio Hack: Plays silence to keep the JS thread alive longer
+  // iOS Background Audio Hack
   const startSilentAudio = useCallback(() => {
     if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     const ctx = audioCtxRef.current;
@@ -104,8 +104,8 @@ const App: React.FC = () => {
           nextMode === TimerMode.BREAK ? 'NEON_SURGE: FOCUS_COMPLETE' : 'NEON_SURGE: BREAK_OVER',
           {
             body: nextMode === TimerMode.BREAK ? '系統能量充沛，啟動休息模式。' : '休息結束，重新進入專注協議。',
-            icon: 'https://cdn-icons-png.flaticon.com/512/3563/3563412.png',
-            badge: 'https://cdn-icons-png.flaticon.com/512/3563/3563412.png',
+            icon: './icon.png',
+            badge: './icon.png',
             tag: 'pomodoro-alert',
             renotify: true,
             requireInteraction: true,
@@ -148,7 +148,6 @@ const App: React.FC = () => {
 
   const toggleTimer = useCallback(() => {
     if (!isActive) {
-      // iOS requires user interaction to start audio context
       if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
       if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
       
@@ -156,7 +155,6 @@ const App: React.FC = () => {
       setTargetTimestamp(Date.now() + timeLeft * 1000);
       requestWakeLock();
       setIsActive(true);
-      requestPermission(); // Ensure permission is fresh
     } else {
       setTargetTimestamp(null);
       releaseWakeLock();
@@ -182,7 +180,6 @@ const App: React.FC = () => {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isActive, syncTime]);
 
-  // Sync on wake up
   useEffect(() => {
     const handleSync = () => {
       if (document.visibilityState === 'visible') {
@@ -210,17 +207,25 @@ const App: React.FC = () => {
   };
 
   const { mins, secs } = getTimerDisplay(timeLeft);
-  const radius = 175;
+  
+  // SVG 響應式圓環設計
+  // 使用 viewBox="0 0 400 400" 確保在任何縮放比例下座標一致
+  // 半徑設為 180，預留 20 像素空間給筆觸（Stroke Width）以免溢出邊界
+  const viewBoxSize = 400;
+  const center = viewBoxSize / 2;
+  const radius = 180; 
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (progress / 100) * circumference;
 
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen p-4 select-none overflow-hidden bg-black">
+      {/* 背景霓虹暈染 */}
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <div className={`w-[800px] h-[800px] rounded-full blur-[150px] transition-colors duration-1000 ${mode === TimerMode.FOCUS ? 'bg-[#ff003c10]' : 'bg-[#00f3ff10]'}`}></div>
       </div>
 
       <div className="relative z-20 flex flex-col items-center w-full max-w-md">
+        {/* 狀態指示文字 */}
         <div 
           className={`mb-6 font-['Orbitron'] text-lg sm:text-xl font-bold tracking-[0.3em] transition-all duration-700 ${isActive ? 'flicker' : ''}`}
           style={{ color: theme.primary, textShadow: `0 0 10px ${theme.glow}, 0 0 20px ${theme.glow}` }}
@@ -228,26 +233,65 @@ const App: React.FC = () => {
           {isActive ? (mode === TimerMode.FOCUS ? '>> FOCUS_ACTIVE' : '>> BREAK_ACTIVE') : 'SYSTEM: STANDBY'}
         </div>
 
+        {/* 計時器主體 */}
         <div className="relative">
+          {/* 背景脈衝光環 */}
           <div 
             className={`absolute inset-0 rounded-full transition-all duration-1000 ${isActive ? 'animate-ring-pulse' : ''}`}
             style={{ boxShadow: isActive ? `0 0 60px -10px ${theme.glow}` : 'none', zIndex: 0 }}
           ></div>
 
           <div 
-            className="relative flex items-center justify-center w-72 h-72 sm:w-[400px] sm:h-[400px] rounded-full border-2 transition-all duration-700 bg-black/40 backdrop-blur-sm"
+            className="relative flex items-center justify-center w-72 h-72 sm:w-[400px] sm:h-[400px] rounded-full border-2 transition-all duration-700 bg-black/40 backdrop-blur-sm overflow-hidden"
             style={{ borderColor: `${theme.primary}22`, boxShadow: `inset 0 0 20px ${theme.soft}` }}
           >
-            <svg className="absolute inset-0 w-full h-full -rotate-90" style={{ zIndex: 5 }}>
-              <circle cx="50%" cy="50%" r={radius} fill="transparent" stroke={theme.primary} strokeWidth="2" className="opacity-10" />
-              <circle cx="50%" cy="50%" r={radius} fill="transparent" stroke={theme.primary} strokeWidth="6" strokeDasharray={circumference}
-                style={{ strokeDashoffset: offset, transition: 'stroke-dashoffset 1s linear, stroke 0.7s ease', filter: `drop-shadow(0 0 12px ${theme.primary})` }} strokeLinecap="round" />
+            {/* 圓形進度條 SVG */}
+            <svg 
+              viewBox={`0 0 ${viewBoxSize} ${viewBoxSize}`}
+              className="absolute inset-0 w-full h-full -rotate-90 p-2" 
+              style={{ zIndex: 5 }}
+            >
+              {/* 底色圓環 */}
+              <circle 
+                cx={center} cy={center} r={radius} 
+                fill="transparent" 
+                stroke={theme.primary} 
+                strokeWidth="2" 
+                className="opacity-10" 
+              />
+              {/* 動態進度圓環 */}
+              <circle 
+                cx={center} cy={center} r={radius} 
+                fill="transparent" 
+                stroke={theme.primary} 
+                strokeWidth="8" 
+                strokeDasharray={circumference}
+                style={{ 
+                  strokeDashoffset: offset, 
+                  transition: 'stroke-dashoffset 1s linear, stroke 0.7s ease', 
+                  filter: `drop-shadow(0 0 12px ${theme.primary})` 
+                }} 
+                strokeLinecap="round" 
+              />
+              {/* 亮部裝飾 (脈衝頭) */}
               {isActive && (
-                <circle cx="50%" cy="50%" r={radius} fill="transparent" stroke="white" strokeWidth="8" strokeDasharray={`1, ${circumference}`}
-                  style={{ strokeDashoffset: offset, transition: 'stroke-dashoffset 1s linear', filter: `drop-shadow(0 0 15px white) drop-shadow(0 0 5px ${theme.primary})` }} strokeLinecap="round" />
+                <circle 
+                  cx={center} cy={center} r={radius} 
+                  fill="transparent" 
+                  stroke="white" 
+                  strokeWidth="10" 
+                  strokeDasharray={`2, ${circumference}`}
+                  style={{ 
+                    strokeDashoffset: offset, 
+                    transition: 'stroke-dashoffset 1s linear', 
+                    filter: `drop-shadow(0 0 15px white) drop-shadow(0 0 5px ${theme.primary})` 
+                  }} 
+                  strokeLinecap="round" 
+                />
               )}
             </svg>
 
+            {/* 數字顯示區 */}
             <div className="flex items-center font-['Orbitron'] text-6xl sm:text-8xl font-black transition-all duration-700 z-10"
               style={{ color: theme.primary, textShadow: `0 0 10px ${theme.glow}` }}>
               <span className="tabular-nums">{mins}</span>
@@ -257,11 +301,13 @@ const App: React.FC = () => {
           </div>
         </div>
 
+        {/* 控制按鈕 */}
         <div className="mt-12 flex flex-row gap-6 w-full justify-center items-center">
           <NeonButton label={isActive ? "PAUSE" : "START"} onClick={toggleTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
           <NeonButton label="RESET" onClick={resetTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
         </div>
 
+        {/* 通知權限按鈕 */}
         <div className="mt-8">
            {notifPermission !== 'granted' && (
             <button 
@@ -273,6 +319,7 @@ const App: React.FC = () => {
           )}
         </div>
 
+        {/* 全螢幕切換特效 (Surge) */}
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-2xl transition-opacity duration-500 ${surgeActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           <div className="text-center font-['JetBrains_Mono'] px-4">
              <div className="text-white text-2xl mb-4 font-bold tracking-[0.2em] uppercase flicker"> &gt; MODALITY_SHIFT_DETECTED </div>
