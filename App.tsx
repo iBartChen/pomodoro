@@ -122,7 +122,7 @@ const App: React.FC = () => {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isActive, syncTime]);
 
-  // Mobile/iOS Wake-up sync (The most critical part for iOS)
+  // Mobile/iOS Wake-up sync
   useEffect(() => {
     const handleSync = () => {
       if (document.visibilityState === 'visible') {
@@ -133,7 +133,7 @@ const App: React.FC = () => {
 
     window.addEventListener('visibilitychange', handleSync);
     window.addEventListener('focus', handleSync);
-    window.addEventListener('pageshow', handleSync); // Important for iOS BF Cache
+    window.addEventListener('pageshow', handleSync);
 
     return () => {
       window.removeEventListener('visibilitychange', handleSync);
@@ -148,11 +148,13 @@ const App: React.FC = () => {
     }
   }, [mode, isActive, surgeActive]);
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  const getTimerDisplay = (seconds: number) => {
+    const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const secs = (seconds % 60).toString().padStart(2, '0');
+    return { mins, secs };
   };
+
+  const { mins, secs } = getTimerDisplay(timeLeft);
 
   const radius = 175;
   const circumference = 2 * Math.PI * radius;
@@ -201,14 +203,15 @@ const App: React.FC = () => {
               )}
             </svg>
 
-            <div className="font-['Orbitron'] text-6xl sm:text-8xl font-black tracking-tighter transition-all duration-700 z-10"
+            <div className="flex items-center font-['Orbitron'] text-6xl sm:text-8xl font-black transition-all duration-700 z-10"
               style={{ color: theme.primary, textShadow: `0 0 10px ${theme.glow}` }}>
-              {formatTime(timeLeft)}
+              <span className="tabular-nums">{mins}</span>
+              <span className="mx-2 sm:mx-4 opacity-70 flicker">:</span>
+              <span className="tabular-nums">{secs}</span>
             </div>
           </div>
         </div>
 
-        {/* 這裡確保按鈕容器與內容置中 */}
         <div className="mt-12 flex flex-row gap-6 w-full justify-center items-center">
           <NeonButton label={isActive ? "PAUSE" : "START"} onClick={toggleTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
           <NeonButton label="RESET" onClick={resetTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
