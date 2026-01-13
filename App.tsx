@@ -15,6 +15,8 @@ const App: React.FC = () => {
   
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wakeLockRef = useRef<any>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const silentNodeRef = useRef<AudioBufferSourceNode | null>(null);
   
   const theme = mode === TimerMode.FOCUS ? COLORS.FOCUS : COLORS.BREAK;
   const totalTime = mode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME;
@@ -23,12 +25,59 @@ const App: React.FC = () => {
     return ((totalTime - timeLeft) / totalTime) * 100;
   }, [timeLeft, totalTime]);
 
+  // Web Audio Synth for alarm
+  const playAlarm = useCallback(() => {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = audioCtxRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const playBeep = (freq: number, start: number, duration: number) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(freq, start);
+      gain.gain.setValueAtTime(0.1, start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(start);
+      osc.stop(start + duration);
+    };
+
+    const now = ctx.currentTime;
+    playBeep(880, now, 0.5);
+    playBeep(880, now + 0.6, 0.5);
+    playBeep(1100, now + 1.2, 0.8);
+  }, []);
+
+  // iOS Background Audio Hack: Plays silence to keep the JS thread alive longer
+  const startSilentAudio = useCallback(() => {
+    if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const ctx = audioCtxRef.current;
+    if (ctx.state === 'suspended') ctx.resume();
+
+    const buffer = ctx.createBuffer(1, 1, 22050);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(ctx.destination);
+    source.start();
+    silentNodeRef.current = source;
+  }, []);
+
+  const stopSilentAudio = useCallback(() => {
+    if (silentNodeRef.current) {
+      silentNodeRef.current.stop();
+      silentNodeRef.current = null;
+    }
+  }, []);
+
   const requestWakeLock = async () => {
     if ('wakeLock' in navigator) {
       try {
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
       } catch (err) {
-        console.debug('WakeLock failed (likely iOS or non-HTTPS)');
+        console.debug('WakeLock failed');
       }
     }
   };
@@ -54,9 +103,12 @@ const App: React.FC = () => {
         registration.showNotification(
           nextMode === TimerMode.BREAK ? 'NEON_SURGE: FOCUS_COMPLETE' : 'NEON_SURGE: BREAK_OVER',
           {
-            body: nextMode === TimerMode.BREAK ? '系統能量充沛，啟動 5 分鐘休息模式。' : '休息結束，重新進入專注協議。',
+            body: nextMode === TimerMode.BREAK ? '系統能量充沛，啟動休息模式。' : '休息結束，重新進入專注協議。',
             icon: 'https://cdn-icons-png.flaticon.com/512/3563/3563412.png',
+            badge: 'https://cdn-icons-png.flaticon.com/512/3563/3563412.png',
             tag: 'pomodoro-alert',
+            renotify: true,
+            requireInteraction: true,
             vibrate: [200, 100, 200]
           } as any
         );
@@ -67,16 +119,18 @@ const App: React.FC = () => {
   const triggerModeSwitch = useCallback(() => {
     const nextMode = mode === TimerMode.FOCUS ? TimerMode.BREAK : TimerMode.FOCUS;
     setSurgeActive(true);
+    playAlarm();
     sendNotification(nextMode);
     setTargetTimestamp(null);
     setIsActive(false);
+    stopSilentAudio();
     
     setTimeout(() => {
       setMode(nextMode);
       setSurgeActive(false);
       setTimeLeft(nextMode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME);
     }, 1500);
-  }, [mode, sendNotification]);
+  }, [mode, sendNotification, playAlarm, stopSilentAudio]);
 
   const syncTime = useCallback(() => {
     if (!isActive || !targetTimestamp) return;
@@ -87,32 +141,38 @@ const App: React.FC = () => {
     setTimeLeft(remaining);
     
     if (remaining === 0) {
-      setIsActive(false);
+      triggerModeSwitch();
       releaseWakeLock();
-      if (!surgeActive) triggerModeSwitch();
     }
-  }, [isActive, targetTimestamp, triggerModeSwitch, surgeActive]);
+  }, [isActive, targetTimestamp, triggerModeSwitch]);
 
   const toggleTimer = useCallback(() => {
     if (!isActive) {
+      // iOS requires user interaction to start audio context
+      if (!audioCtxRef.current) audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (audioCtxRef.current.state === 'suspended') audioCtxRef.current.resume();
+      
+      startSilentAudio();
       setTargetTimestamp(Date.now() + timeLeft * 1000);
       requestWakeLock();
       setIsActive(true);
+      requestPermission(); // Ensure permission is fresh
     } else {
       setTargetTimestamp(null);
       releaseWakeLock();
       setIsActive(false);
+      stopSilentAudio();
     }
-  }, [isActive, timeLeft]);
+  }, [isActive, timeLeft, startSilentAudio, stopSilentAudio]);
 
   const resetTimer = useCallback(() => {
     setIsActive(false);
     setTargetTimestamp(null);
     setTimeLeft(mode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME);
     releaseWakeLock();
-  }, [mode]);
+    stopSilentAudio();
+  }, [mode, stopSilentAudio]);
 
-  // Interval sync
   useEffect(() => {
     if (isActive) {
       timerRef.current = setInterval(syncTime, 1000);
@@ -122,31 +182,26 @@ const App: React.FC = () => {
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [isActive, syncTime]);
 
-  // Mobile/iOS Wake-up sync
+  // Sync on wake up
   useEffect(() => {
     const handleSync = () => {
       if (document.visibilityState === 'visible') {
         syncTime();
-        if (isActive) requestWakeLock();
+        if (isActive) {
+          requestWakeLock();
+          if (audioCtxRef.current?.state === 'suspended') audioCtxRef.current.resume();
+        }
       }
     };
-
     window.addEventListener('visibilitychange', handleSync);
     window.addEventListener('focus', handleSync);
     window.addEventListener('pageshow', handleSync);
-
     return () => {
       window.removeEventListener('visibilitychange', handleSync);
       window.removeEventListener('focus', handleSync);
       window.removeEventListener('pageshow', handleSync);
     };
   }, [syncTime, isActive]);
-
-  useEffect(() => {
-    if (!isActive && !surgeActive) {
-      setTimeLeft(mode === TimerMode.FOCUS ? FOCUS_TIME : BREAK_TIME);
-    }
-  }, [mode, isActive, surgeActive]);
 
   const getTimerDisplay = (seconds: number) => {
     const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -155,7 +210,6 @@ const App: React.FC = () => {
   };
 
   const { mins, secs } = getTimerDisplay(timeLeft);
-
   const radius = 175;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (progress / 100) * circumference;
@@ -167,15 +221,6 @@ const App: React.FC = () => {
       </div>
 
       <div className="relative z-20 flex flex-col items-center w-full max-w-md">
-        {notifPermission !== 'granted' && (
-          <button 
-            onClick={requestPermission}
-            className="mb-4 text-[10px] font-['JetBrains_Mono'] border border-white/20 px-3 py-1 rounded-full text-white/50 hover:text-white hover:border-white/50 transition-all uppercase tracking-widest"
-          >
-            [ ! ] ENABLE BACKGROUND ALERTS
-          </button>
-        )}
-
         <div 
           className={`mb-6 font-['Orbitron'] text-lg sm:text-xl font-bold tracking-[0.3em] transition-all duration-700 ${isActive ? 'flicker' : ''}`}
           style={{ color: theme.primary, textShadow: `0 0 10px ${theme.glow}, 0 0 20px ${theme.glow}` }}
@@ -215,6 +260,17 @@ const App: React.FC = () => {
         <div className="mt-12 flex flex-row gap-6 w-full justify-center items-center">
           <NeonButton label={isActive ? "PAUSE" : "START"} onClick={toggleTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
           <NeonButton label="RESET" onClick={resetTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
+        </div>
+
+        <div className="mt-8">
+           {notifPermission !== 'granted' && (
+            <button 
+              onClick={requestPermission}
+              className="text-[10px] font-['JetBrains_Mono'] border border-white/20 px-3 py-1 rounded-full text-white/50 hover:text-white hover:border-white/50 transition-all uppercase tracking-widest"
+            >
+              [ ! ] ENABLE NOTIFICATIONS
+            </button>
+          )}
         </div>
 
         <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-2xl transition-opacity duration-500 ${surgeActive ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
