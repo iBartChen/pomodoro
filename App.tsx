@@ -288,9 +288,24 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="mt-12 flex flex-row gap-6 w-full justify-center items-center">
-          <NeonButton label={isActive ? "PAUSE" : "START"} onClick={toggleTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
-          <NeonButton label="RESET" onClick={resetTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
+        <div className="mt-12 flex flex-col gap-4 w-full items-center">
+          <div className="flex flex-row gap-6 w-full justify-center">
+            <NeonButton label={isActive ? "PAUSE" : "START"} onClick={toggleTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
+            <NeonButton label="RESET" onClick={resetTimer} color={theme.primary} glowColor={theme.glow} disabled={surgeActive} />
+          </div>
+          
+          {/* 只在休息模式顯示 SKIP BREAK 按鈕 */}
+          {mode === TimerMode.BREAK && (
+            <div className="w-full flex justify-center mt-2 animate-in fade-in slide-in-from-top-4 duration-500">
+              <NeonButton 
+                label="SKIP BREAK" 
+                onClick={triggerModeSwitch} 
+                color={theme.primary} 
+                glowColor={theme.glow} 
+                disabled={surgeActive}
+              />
+            </div>
+          )}
         </div>
 
         <div className="mt-8">
@@ -323,6 +338,8 @@ const App: React.FC = () => {
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes ring-pulse { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(1.05); opacity: 0.6; } }
         .animate-ring-pulse { animation: ring-pulse 2s ease-in-out infinite; }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fade-in 0.5s ease-out forwards; }
       `}} />
     </div>
   );
